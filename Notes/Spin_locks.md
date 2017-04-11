@@ -1,7 +1,38 @@
-Locks
-==========
+Interrupts, Spin Locks and Preemption
+=====================================
+
+#### interrupts
+- Process context vs. interrupt context
+  - system calls run in process context- can sleep
+  - Interrupt handlers run in interrupt context - cannot sleep
+    - Reason: when in interrupt context, there is no notion of the current process, so it does not save much info, so it is difficult to come back if gets put to the wait queue and switched to some other process
+    - corollary: if you are in interrupt context, need to get out as quickly as possible
+
+- Interrupt handlers
+  - single interrupt will not next, so handler need to be reentrant
+    - but handler can be interrupted by a different interrupt
+  - only time critical stuff in handlers
+    - push rest to bottom half
+  - all handlers share one interrupt stack per processor
+  - while handling a certain interrupt, that interrupt is disabled, but not the case for other interrupts
+
 
 #### Spin Locks
+- `test_and_set()` hardware atomic instruction
+- `spin_lock()` /`spin_unlock()`
+  - must not lose CPU while holding a spin lock
+    - other threads will wait for the lock for a long time
+  - `spin+lock()` prevents kernel preemption by ++preempt_count
+    - in uniprocessor, that's all spin_lock() does
+    - kernel preemption: even in kernel execution, a process can be switched out of a CPU
+  - must NOT call any function that can potentially sleep
+    - `kmalloc`, `copy_from_user`
+    - solution: can allocate before hand and then assign the value within the critical section
+    - `kfree()` is safe to call because it does not sleep, but can be always taken out of the critical section
+  - hardware interrupt is ok unless the interrupt handler may try to lock this spin lock
+    - spin lock not recursive: same thread locking twice will deadlock
+  - keep the critical section as small as possible
+
 - Critical regions not only contains merely incrementing a variable, it also spans multiple functions. That's why we need a more general method os synchronization: locks. (In addition to making incrementing operations atomic)
 - A spin lock is a lock that can be held by at most one thread of execution.
   - If a thread of execution attempts to acquire a spin lock while it is contended, the thread busy loops -- spins -- waiting for the lock to become available. Thus prevents more than one thread of execution from entering the critical region at any one time.
@@ -35,6 +66,8 @@ spin_lock_irqsave(&mr_lock, flags);
 spin_unlock_irqrestore(&mr_lock, flags);
 ```
 `spin_lock_irqsave()` saves the current state of interrupts, disables them locally, and then obtains the given lock. Conversely, `spin_unlock_irqrestore()` unlocks the given lock and returns interrupts to their previous state. This way, if interrputs were initially disables, your code would not erroneously enable them, but instead keep them disables. _flags_ variable is passed by value because the lock routines are implemented partially as macros.
+
+- only have to call these version of spin lock when dealing with some global stuff like taking a task list from the task structs
 
 #### Other Spin Lock Methods
 `spin_lock_init()`: initializes a dynamically created spin lock
